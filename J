@@ -52,18 +52,43 @@ MainTab:Input({
 
 local tradeStatusPara = MainTab:Paragraph({ Title = "Status", Desc = "Idle" })
 
-MainTab:Button({
-    Title = "Send Trade Request", Icon = "send",
-    Callback = function()
-        local target = Players:FindFirstChild(targetUsername)
-        if not target then
-            setDesc(tradeStatusPara, "⚠️ Player '" .. targetUsername .. "' not found in server")
-            return
-        end
-        local ok, err = pcall(function() RequestTradeRE:FireServer(target) end)
-        setDesc(tradeStatusPara, ok and ("✅ Trade request sent to " .. target.Name) or ("❌ " .. tostring(err)))
-    end,
+local autoTradeOn = false
+local tradeRetryInterval = 3
+
+MainTab:Slider({
+    Title = "Retry Interval (sec)",
+    Desc  = "How often to re-send the trade request while enabled",
+    Value = { Min = 1, Max = 15, Default = 3 },
+    Step  = 1,
+    Flag  = "tradeRetryInterval",
+    Callback = function(v) tradeRetryInterval = v end,
 })
+
+MainTab:Toggle({
+    Title    = "Auto Trade",
+    Desc     = "Keep sending a trade request to the target automatically",
+    Icon     = "send",
+    Value    = false,
+    Flag     = "autoTrade",
+    Callback = function(v) autoTradeOn = v end,
+})
+
+task.spawn(function()
+    while true do
+        if autoTradeOn then
+            local target = Players:FindFirstChild(targetUsername)
+            if not target then
+                setDesc(tradeStatusPara, "⚠️ Player '" .. targetUsername .. "' not found — retrying...")
+            else
+                local ok, err = pcall(function() RequestTradeRE:FireServer(target) end)
+                setDesc(tradeStatusPara, ok and ("✅ Trade request sent to " .. target.Name .. " — " .. os.date("%H:%M:%S")) or ("❌ " .. tostring(err)))
+            end
+            task.wait(tradeRetryInterval)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
 -- ========================
 -- UI: Auto Put Item
@@ -106,19 +131,51 @@ local function runPutItemSequence()
     task.wait(2)
     local ok3, err3 = pcall(function() AdvanceTradeRE:FireServer() end)
 
-    if ok1 and ok2 and ok3 then
-        setDesc(putItemStatusPara, "✅ Done — offered and confirmed")
-    else
-        setDesc(putItemStatusPara, "❌ Failed: " .. tostring(err1 or err2 or err3))
-    end
+    return ok1 and ok2 and ok3, (err1 or err2 or err3)
 end
 
 MainTab:Button({
-    Title = "Put Item & Confirm", Icon = "package-check",
+    Title = "Put Item & Confirm (manual)", Icon = "package-check",
     Callback = function()
-        task.spawn(runPutItemSequence)
+        task.spawn(function()
+            local ok, err = runPutItemSequence()
+            setDesc(putItemStatusPara, ok and "✅ Done — offered and confirmed" or ("❌ Failed: " .. tostring(err)))
+        end)
     end,
 })
+
+local autoPutItemOn = false
+local putItemCycleWait = 3
+
+MainTab:Slider({
+    Title = "Cycle Wait (sec)",
+    Desc  = "Pause between each offer+confirm cycle while enabled",
+    Value = { Min = 1, Max = 20, Default = 3 },
+    Step  = 1,
+    Flag  = "putItemCycleWait",
+    Callback = function(v) putItemCycleWait = v end,
+})
+
+MainTab:Toggle({
+    Title    = "Auto Put Item",
+    Desc     = "Keep offering the item and confirming automatically",
+    Icon     = "package",
+    Value    = false,
+    Flag     = "autoPutItem",
+    Callback = function(v) autoPutItemOn = v end,
+})
+
+task.spawn(function()
+    while true do
+        if autoPutItemOn then
+            local ok, err = runPutItemSequence()
+            setDesc(putItemStatusPara, (ok and "✅ Done — offered and confirmed" or ("❌ Failed: " .. tostring(err))) .. " — " .. os.date("%H:%M:%S"))
+            task.wait(putItemCycleWait)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
 -- ========================
 -- UI: Auto Accept tab
