@@ -1,0 +1,167 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer       = Players.LocalPlayer
+
+-- ========================
+-- Window
+-- ========================
+local Window = WindUI:CreateWindow({
+    Title  = "Giving",
+    Icon   = "gift",
+    Author = "Divinex",
+    Folder = "Giving",
+    Save   = true,
+    Size   = UDim2.fromOffset(440, 480),
+    Theme  = "Dark",
+})
+
+local MainTab   = Window:Tab({ Title = "Main",        Icon = "repeat"   })
+local AcceptTab = Window:Tab({ Title = "Auto Accept", Icon = "check"    })
+
+-- ========================
+-- Remotes
+-- ========================
+local TradeService     = ReplicatedStorage:WaitForChild("Network"):WaitForChild("TradeService")
+local RequestTradeRE    = TradeService:WaitForChild("RE"):WaitForChild("RequestTrade")
+local ChangeOfferRE     = TradeService.RE:WaitForChild("ChangeOffer")
+local AdvanceTradeRE    = TradeService.RE:WaitForChild("AdvanceTrade")
+local RespondToRequestRE = TradeService.RE:WaitForChild("RespondToRequest")
+
+local function setDesc(para, msg)
+    pcall(function() if para then para:SetDesc(msg) end end)
+end
+
+-- ========================
+-- UI: Auto Trade
+-- ========================
+MainTab:Section({ Title = "Auto Trade", Icon = "user-plus" })
+MainTab:Paragraph({
+    Title = "How it works",
+    Desc  = "Sends a trade request to the player named below.",
+})
+
+local targetUsername = "Grind_GAXZ"
+MainTab:Input({
+    Title       = "Target Username",
+    Placeholder = "Grind_GAXZ",
+    Value       = "Grind_GAXZ",
+    Callback    = function(v) targetUsername = v end,
+})
+
+local tradeStatusPara = MainTab:Paragraph({ Title = "Status", Desc = "Idle" })
+
+MainTab:Button({
+    Title = "Send Trade Request", Icon = "send",
+    Callback = function()
+        local target = Players:FindFirstChild(targetUsername)
+        if not target then
+            setDesc(tradeStatusPara, "⚠️ Player '" .. targetUsername .. "' not found in server")
+            return
+        end
+        local ok, err = pcall(function() RequestTradeRE:FireServer(target) end)
+        setDesc(tradeStatusPara, ok and ("✅ Trade request sent to " .. target.Name) or ("❌ " .. tostring(err)))
+    end,
+})
+
+-- ========================
+-- UI: Auto Put Item
+-- ========================
+MainTab:Section({ Title = "Auto Put Item", Icon = "package" })
+MainTab:Paragraph({
+    Title = "How it works",
+    Desc  = "Offers the item below, then confirms the trade twice with the given delays. Use this once a trade window is open.",
+})
+
+local putItemName   = "Lucky Spin"
+local putItemAmount = 10
+
+MainTab:Input({
+    Title       = "Item Name",
+    Placeholder = "Lucky Spin",
+    Value       = "Lucky Spin",
+    Callback    = function(v) putItemName = v end,
+})
+
+MainTab:Input({
+    Title       = "Amount",
+    Placeholder = "10",
+    Value       = "10",
+    Callback    = function(v)
+        putItemAmount = tonumber(v) or putItemAmount
+    end,
+})
+
+local putItemStatusPara = MainTab:Paragraph({ Title = "Status", Desc = "Idle" })
+
+local function runPutItemSequence()
+    local ok1, err1 = pcall(function() ChangeOfferRE:FireServer(putItemName, putItemAmount) end)
+    setDesc(putItemStatusPara, "📦 Offered " .. tostring(putItemAmount) .. "x " .. putItemName)
+
+    task.wait(1)
+    local ok2, err2 = pcall(function() AdvanceTradeRE:FireServer() end)
+    setDesc(putItemStatusPara, "➡️ Advanced (1/2)")
+
+    task.wait(2)
+    local ok3, err3 = pcall(function() AdvanceTradeRE:FireServer() end)
+
+    if ok1 and ok2 and ok3 then
+        setDesc(putItemStatusPara, "✅ Done — offered and confirmed")
+    else
+        setDesc(putItemStatusPara, "❌ Failed: " .. tostring(err1 or err2 or err3))
+    end
+end
+
+MainTab:Button({
+    Title = "Put Item & Confirm", Icon = "package-check",
+    Callback = function()
+        task.spawn(runPutItemSequence)
+    end,
+})
+
+-- ========================
+-- UI: Auto Accept tab
+-- ========================
+AcceptTab:Section({ Title = "Auto Accept", Icon = "check" })
+AcceptTab:Paragraph({
+    Title = "How it works",
+    Desc  = "Repeatedly tries to accept an incoming trade request, then confirms the trade twice with the given delays. Loops continuously while enabled.",
+})
+
+local autoAcceptOn = false
+local acceptStatusPara
+
+AcceptTab:Toggle({
+    Title    = "Auto Accept",
+    Desc     = "Keep accepting + confirming trades automatically",
+    Icon     = "check",
+    Value    = false,
+    Flag     = "autoAccept",
+    Callback = function(v) autoAcceptOn = v end,
+})
+
+acceptStatusPara = AcceptTab:Paragraph({ Title = "Status", Desc = "Idle" })
+
+task.spawn(function()
+    while true do
+        if autoAcceptOn then
+            local ok1, err1 = pcall(function() RespondToRequestRE:FireServer(true) end)
+            setDesc(acceptStatusPara, ok1 and "✅ Accept sent — waiting to confirm..." or ("❌ " .. tostring(err1)))
+
+            task.wait(1.5)
+            if autoAcceptOn then
+                pcall(function() AdvanceTradeRE:FireServer() end)
+                setDesc(acceptStatusPara, "➡️ Advanced (1/2)")
+            end
+
+            task.wait(2.5)
+            if autoAcceptOn then
+                pcall(function() AdvanceTradeRE:FireServer() end)
+                setDesc(acceptStatusPara, "✅ Advanced (2/2) — cycle complete, retrying...")
+            end
+        else
+            task.wait(1)
+        end
+    end
+end)
