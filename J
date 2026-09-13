@@ -29,6 +29,19 @@ local ChangeOfferRE     = TradeService.RE:WaitForChild("ChangeOffer")
 local AdvanceTradeRE    = TradeService.RE:WaitForChild("AdvanceTrade")
 local RespondToRequestRE = TradeService.RE:WaitForChild("RespondToRequest")
 
+local GroupRewardService = ReplicatedStorage:WaitForChild("Network"):WaitForChild("GroupRewardService")
+local ClaimRE = GroupRewardService:WaitForChild("RE"):WaitForChild("Claim")
+
+-- Runs once automatically as soon as the script loads — no button needed.
+do
+    local ok, err = pcall(function() ClaimRE:FireServer() end)
+    if ok then
+        WindUI:Notify({ Title = "Group Reward", Content = "Claim sent", Duration = 3, Icon = "gift" })
+    else
+        WindUI:Notify({ Title = "Group Reward", Content = "Claim failed: " .. tostring(err), Duration = 4, Icon = "x" })
+    end
+end
+
 local function setDesc(para, msg)
     pcall(function() if para then para:SetDesc(msg) end end)
 end
